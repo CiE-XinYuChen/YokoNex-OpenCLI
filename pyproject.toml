@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "yokonex-opencli"
+version         = "1.0.0"
+description     = "YokoNex Unified BLE Device Client / 役次元统一蓝牙设备客户端"
+readme          = "README.md"
+license         = { text = "MIT" }
+requires-python = ">=3.11"
+
+authors = [
+    { name = "YokoNex / 役次元" },
+]
+
+keywords = [
+    "ble", "bluetooth", "yokonex", "ems", "e-stim",
+    "toy", "websocket", "cli",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+    "Topic :: System :: Hardware",
+]
+
+dependencies = [
+    "bleak>=0.21.0",
+    "websockets>=12.0",
+    "prompt_toolkit>=3.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.scripts]
+yokonex = "yokonex.main:main"
+
+[project.urls]
+Homepage   = "https://github.com/CiE-XinYuChen/YokoNex-OpenCLI"
+Repository = "https://github.com/CiE-XinYuChen/YokoNex-OpenCLI"
+Protocol   = "https://github.com/YCY-YOKONEX/YCY-YOKONEX-OpenSource"
+
+# ── Package discovery ──────────────────────────────────────────────────────
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["yokonex*"]
+exclude = ["*.tests*", "*.pycache*"]
+
+[tool.setuptools.package-data]
+"yokonex" = ["py.typed"]
