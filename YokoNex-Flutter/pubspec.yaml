@@ -1,0 +1,35 @@
+name: yokonex_mobile
+description: YokoNex Flutter client — remote device control via cloud WS relay
+
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.2
+
+  # WebSocket channel
+  web_socket_channel: ^3.0.1
+
+  # Persistent settings
+  shared_preferences: ^2.3.2
+
+  # Navigation
+  go_router: ^14.3.0
+
+  # UI components
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
