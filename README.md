@@ -31,10 +31,12 @@ YokoNex OpenCLI 是役次元（YokoNex）系列智能设备的统一蓝牙控制
 
 | 设备类型 | `device_type` | BLE 服务 UUID | 名称前缀 | 协议文档 |
 |---------|--------------|--------------|---------|---------|
-| 役次元 榨精机PRO | `toy` | `FF40` | `YCY-FJB-03` | [飞机杯蓝牙协议](docs/飞机杯蓝牙协议.md) |
-```
-该设备拥有3个马达，A为主电机，B为吮吸强度，C为震动强度。
-```
+| 役次元 榨精机PRO | `toy` | `FF40` | `YCY-FJB`、`YCY-TDD` | [飞机杯蓝牙协议](docs/飞机杯蓝牙协议.md) |
+| 役次元 二代电击器 | `estim` | `FF30` | `YCY-DJQ`、`YCY-EMS` | [二代电击器蓝牙协议](docs/二代电击器蓝牙协议.md) |
+
+**toy（榨精机 / 跳蛋）**：3 路马达（A 主电机 / B 吮吸 / C 震动），速度 0–20，模式 1–4。
+
+**estim（二代电击器）**：双通道 EMS（A / B），强度 1–276，16 种固定模式 + 1 种自定义模式（频率 1–100 Hz，脉冲时间 0–100 µs）。
 
 
 ### 快速开始
@@ -75,10 +77,10 @@ python main.py tui   --host 192.168.1.100 --port 9000
 scan [秒数]                  扫描设备，默认 5 秒
 connect <编号>               连接扫描列表中第 n 个设备
 disconnect <编号|地址>        断开连接
-mode <编号> <马达> <模式>      设置固定模式，马达：A/B/C/AB/ABC
-speed <编号> <A> <B> <C>     实时速率，0–20
-stop <编号>                  停止所有马达
-info <编号>                   查询设备信息和电量
+mode <编号> <马达> <模式>      设置固定模式，马达：A/B/C/AB/ABC（toy）
+speed <编号> <A> <B> <C>     实时速率，0–20（toy）
+stop <编号>                  停止所有马达 / 关闭所有通道
+info <编号>                  查询设备信息和电量
 list                         列出所有已连接设备
 help                         帮助
 ```
@@ -163,6 +165,11 @@ YokoNex OpenCLI is a unified Bluetooth control client for the YokoNex series of 
 | Device | `device_type` | BLE Service UUID | Name Prefix | Protocol Doc |
 |--------|--------------|-----------------|-------------|--------------|
 | Masturbator / Vibrator | `toy` | `FF40` | `YCY-FJB`, `YCY-TDD` | [TOY BLE Protocol](docs/飞机杯蓝牙协议.md) |
+| E-Stim Gen2 | `estim` | `FF30` | `YCY-DJQ`, `YCY-EMS` | [EMS BLE Protocol](docs/二代电击器蓝牙协议.md) |
+
+**toy**: 3 motors (A main / B suction / C vibration), speed 0–20, modes 1–4.
+
+**estim**: Dual-channel EMS (A / B), intensity 1–276, 16 fixed modes + 1 custom mode (freq 1–100 Hz, pulse 0–100 µs).
 
 ### Quick Start
 
