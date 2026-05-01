@@ -6,7 +6,8 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Protocol](https://img.shields.io/badge/BLE-YSKJ_TOY_BLE_V1.1-purple)](docs/飞机杯蓝牙协议.md)
+[![Protocol TOY](https://img.shields.io/badge/BLE-YSKJ_TOY_BLE_V1.1-purple)](docs/飞机杯蓝牙协议.md)
+[![Protocol EMS](https://img.shields.io/badge/BLE-YSKJ_EMS_BLE_V1.6-red)](docs/二代电击器蓝牙协议.md)
 
 </div>
 
@@ -31,12 +32,11 @@ YokoNex OpenCLI 是役次元（YokoNex）系列智能设备的统一蓝牙控制
 
 | 设备类型 | `device_type` | BLE 服务 UUID | 名称前缀 | 协议文档 |
 |---------|--------------|--------------|---------|---------|
-| 役次元 榨精机PRO | `toy` | `FF40` | `YCY-FJB`、`YCY-TDD` | [飞机杯蓝牙协议](docs/飞机杯蓝牙协议.md) |
-| 役次元 二代电击器 | `estim` | `FF30` | `YCY-DJQ`、`YCY-EMS` | [二代电击器蓝牙协议](docs/二代电击器蓝牙协议.md) |
-
-**toy（榨精机 / 跳蛋）**：3 路马达（A 主电机 / B 吮吸 / C 震动），速度 0–20，模式 1–4。
-
-**estim（二代电击器）**：双通道 EMS（A / B），强度 1–276，16 种固定模式 + 1 种自定义模式（频率 1–100 Hz，脉冲时间 0–100 µs）。
+| 役次元 榨精机PRO | `toy` | `FF40` | `YCY-FJB-03` | [飞机杯蓝牙协议](docs/飞机杯蓝牙协议.md) |
+```
+该设备拥有3个马达，A为主电机，B为吮吸强度，C为震动强度。
+```
+| 役次元 电击器 | `estim` | `FF30` | `YCY-EMS`, `YCY-DJQ`, `YSKJ-EMS` | [二代电击器蓝牙协议](docs/二代电击器蓝牙协议.md) |
 
 
 ### 快速开始
@@ -60,12 +60,6 @@ python main.py tui             # 终端 2：启动 TUI
 # 自定义端口
 python main.py server --host 0.0.0.0 --port 9000
 python main.py tui   --host 192.168.1.100 --port 9000
-
-# Agent 模式（云中继，允许远程客户端通过 cloud relay 控制本机设备）
-python main.py agent --cloud --token <TOKEN> --agent-id <ID>
-
-# 调试模式（输出完整 BLE 收发报文）
-python main.py server --tui --log-level DEBUG
 ```
 
 #### 3. TUI 使用
@@ -80,20 +74,15 @@ python main.py server --tui --log-level DEBUG
 命令行（底部输入框）：
 
 ```
-scan [秒数]                               扫描设备，默认 5 秒
-connect <编号>                            连接扫描列表中第 n 个设备
-disconnect <编号|地址>                     断开连接
-mode <编号> <马达> <模式>                   设置固定模式（toy）
-speed <编号> <A> <B> <C>                  实时速率，0–20（toy）
-stop <编号>                               停止所有马达 / 关闭所有通道
-ems <编号> ch <通道> <强度> [模式]          开启 EMS 通道（estim），通道=A/B/AB
-ems <编号> ch <通道> <强度> 17 <freq> <pw> 自定义波形，freq 1–100 Hz，pw 0–100 µs
-ems <编号> stop                           关闭双通道输出（estim）
-ems <编号> motor <状态>                   控制马达（estim）
-ems <编号> info                           查询通道状态 + 电量（estim）
-info <编号>                               查询设备信息和电量
-list                                      列出所有已连接设备
-help                                      帮助
+scan [秒数]                  扫描设备，默认 5 秒
+connect <编号>               连接扫描列表中第 n 个设备
+disconnect <编号|地址>        断开连接
+mode <编号> <马达> <模式>      设置固定模式，马达：A/B/C/AB/ABC
+speed <编号> <A> <B> <C>     实时速率，0–20
+stop <编号>                  停止所有马达
+info <编号>                   查询设备信息和电量
+list                         列出所有已连接设备
+help                         帮助
 ```
 
 ### 项目结构
@@ -102,27 +91,21 @@ help                                      帮助
 YokoNex-OpenCLI/
 ├── main.py                  # 入口
 ├── requirements.txt
-├── yokonex/
-│   ├── core/
-│   │   ├── base_device.py       # 设备抽象基类（扩展接口）
-│   │   ├── device_manager.py    # 多设备生命周期管理
-│   │   └── ws_server.py         # WebSocket 服务端
-│   ├── devices/
-│   │   ├── registry.py          # 设备类型注册表
-│   │   ├── toy/
-│   │   │   ├── protocol.py      # YSKJ_TOY_BLE V1.1 报文构建/解析
-│   │   │   └── device.py        # ToyDevice 实现
-│   │   └── estim/
-│   │       ├── protocol.py      # YSKJ_EMS_BLE V1.6 报文构建/解析
-│   │       └── device.py        # EStimDevice 实现
-│   ├── ble/
-│   │   └── scanner.py           # BLE 扫描器
-│   ├── cloud/
-│   │   └── cloud_bridge.py      # 云中继客户端（agent 模式）
-│   └── frontend/
-│       └── tui.py               # 终端 UI
+├── core/
+│   ├── base_device.py       # 设备抽象基类（扩展接口）
+│   ├── device_manager.py    # 多设备生命周期管理
+│   └── ws_server.py         # WebSocket 服务端
+├── devices/
+│   ├── registry.py          # 设备类型注册表
+│   └── toy/
+│       ├── protocol.py      # YSKJ_TOY_BLE V1.1 报文构建/解析
+│       └── device.py        # ToyDevice 实现
+├── ble/
+│   └── scanner.py           # BLE 扫描器
+├── frontend/
+│   └── tui.py               # 终端 UI
 └── docs/
-    ├── union-api.md              # 统一 WS API 文档
+    ├── union-api.md          # 统一 WS API 文档
     ├── 飞机杯蓝牙协议.md
     └── 二代电击器蓝牙协议.md
 ```
@@ -182,11 +165,7 @@ YokoNex OpenCLI is a unified Bluetooth control client for the YokoNex series of 
 | Device | `device_type` | BLE Service UUID | Name Prefix | Protocol Doc |
 |--------|--------------|-----------------|-------------|--------------|
 | Masturbator / Vibrator | `toy` | `FF40` | `YCY-FJB`, `YCY-TDD` | [TOY BLE Protocol](docs/飞机杯蓝牙协议.md) |
-| E-Stim Gen2 | `estim` | `FF30` | `YCY-DJQ`, `YCY-EMS` | [EMS BLE Protocol](docs/二代电击器蓝牙协议.md) |
-
-**toy**: 3 motors (A main / B suction / C vibration), speed 0–20, modes 1–4.
-
-**estim**: Dual-channel EMS (A / B), intensity 1–276, 16 fixed modes + 1 custom mode (freq 1–100 Hz, pulse 0–100 µs).
+| E-Stim Device | `estim` | `FF30` | `YCY-EMS`, `YCY-DJQ`, `YSKJ-EMS` | [EMS BLE Protocol](docs/二代电击器蓝牙协议.md) |
 
 ### Quick Start
 
@@ -209,12 +188,6 @@ python main.py tui             # Terminal 2: TUI
 # Custom host/port
 python main.py server --host 0.0.0.0 --port 9000
 python main.py tui   --host 192.168.1.100 --port 9000
-
-# Agent mode (cloud relay — lets a remote client control local devices)
-python main.py agent --cloud --token <TOKEN> --agent-id <ID>
-
-# Debug mode (log raw BLE frames)
-python main.py server --tui --log-level DEBUG
 ```
 
 #### 3. TUI shortcuts
@@ -229,20 +202,15 @@ python main.py server --tui --log-level DEBUG
 Command line (bottom input box):
 
 ```
-scan [sec]                                  Scan for devices, default 5 sec
-connect <n>                                 Connect n-th device in scan list
-disconnect <n|addr>                         Disconnect device
-mode <n> <motors> <mode>                    Set fixed mode; motors: A/B/C/AB/ABC (toy)
-speed <n> <A> <B> <C>                       Real-time speed, 0–20 per motor (toy)
-stop <n>                                    Stop all motors / close all channels
-ems <n> ch <ch> <intensity> [mode]          Enable EMS channel (estim); ch=A/B/AB, intensity 1–276
-ems <n> ch <ch> <intensity> 17 <freq> <pw>  Custom waveform; freq 1–100 Hz, pw 0–100 µs
-ems <n> stop                                Disable both EMS channels (estim)
-ems <n> motor <state>                       Control motor (estim)
-ems <n> info                                Query channel status + battery (estim)
-info <n>                                    Query device info and battery
-list                                        List all connected devices
-help                                        Show help
+scan [sec]                   Scan for devices, default 5 sec
+connect <n>                  Connect n-th device in scan list
+disconnect <n|addr>          Disconnect device
+mode <n> <motors> <mode>     Set fixed mode; motors: A/B/C/AB/ABC
+speed <n> <A> <B> <C>        Real-time speed, 0–20 per motor
+stop <n>                     Stop all motors
+info <n>                     Query device info and battery
+list                         List all connected devices
+help                         Show help
 ```
 
 ### Adding a New Device Type
