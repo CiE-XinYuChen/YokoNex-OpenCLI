@@ -372,9 +372,204 @@ Client C ──┘                         └── BLE ── Device 2
 
 ---
 
-#### 4.2 EStimDevice — 二代电击器（`device_type: estim`，规划中）
+#### 4.2 EStimDevice — 二代电击器（`device_type: estim`）
 
-> 文档见 [二代电击器蓝牙协议](二代电击器蓝牙协议.md)，API 接入后补充。
+基于 YSKJ_EMS_BLE V1.6 协议，双通道 EMS 电击器。
+
+##### `set_channel` — 通道控制
+
+控制 EMS 通道的开关、强度、模式。
+
+```json
+{
+  "action": "set_channel",
+  "data": {
+    "channel":   "A",
+    "enabled":   true,
+    "intensity": 50,
+    "mode":      3,
+    "freq":      0,
+    "pulse_us":  0
+  }
+}
+```
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `channel` | string | 否 | `"A"` | 通道选择：`"A"` / `"B"` / `"AB"`（AB 同步） |
+| `enabled` | bool | 否 | `true` | `true` 开启输出，`false` 关闭 |
+| `intensity` | int | 否 | `1` | EMS 强度，范围 `1–276` |
+| `mode` | int | 否 | `1` | 模式：`1–16` 固定模式；`17` 自定义模式 |
+| `freq` | int | 否 | `0` | 自定义模式频率（Hz），范围 `1–100`，固定模式填 `0` |
+| `pulse_us` | int | 否 | `0` | 自定义模式脉冲时间（µs），范围 `0–100`，固定模式填 `0` |
+
+> **注意**：自定义模式（`mode=17`）时 `freq` 必须 ≥ 1，否则设备返回 `data_error`。最快每 **100ms** 下发一次（用于波形流式控制）。
+
+**响应**
+
+```json
+{ "id": "req-005", "ok": true }
+```
+
+---
+
+##### `stop` — 关闭所有通道
+
+等价于向 AB 通道发送关闭命令。**仅在至少一个通道处于开启状态时才发送 BLE 包**（向已停止的设备重复发送会触发设备端 `data_error`）。
+
+```json
+{ "action": "stop", "data": {} }
+```
+
+**响应**
+
+```json
+{ "id": "req-005", "ok": true }
+```
+
+---
+
+##### `set_motor` — 内置震动马达
+
+控制设备内置的提示震动马达（与 EMS 输出无关）。
+
+```json
+{
+  "action": "set_motor",
+  "data": { "state": 1 }
+}
+```
+
+| `state` 值 | 说明 |
+|-----------|------|
+| `0` | 关闭 |
+| `1` | 开启 |
+| `17` (`0x11`) | 预设频率 1 |
+| `18` (`0x12`) | 预设频率 2 |
+| `19` (`0x13`) | 预设频率 3 |
+
+---
+
+##### `set_step` — 计步功能
+
+```json
+{
+  "action": "set_step",
+  "data": { "state": "start" }
+}
+```
+
+| `state` 值 | 说明 |
+|-----------|------|
+| `"start"` | 开始计步 |
+| `"stop"` | 停止计步 |
+| `"reset"` | 清零 |
+| `"pause"` | 暂停 |
+| `"resume"` | 继续 |
+
+---
+
+##### `set_angle` — 角度传感器
+
+```json
+{
+  "action": "set_angle",
+  "data": { "enabled": true }
+}
+```
+
+开启后设备实时上报六轴原始数据（`angle` 事件）。
+
+---
+
+##### `get_channel` — 查询通道状态
+
+```json
+{
+  "action": "get_channel",
+  "data": { "channel": "A" }
+}
+```
+
+**响应**（返回缓存状态，同时向设备发送查询包刷新数据）
+
+```json
+{
+  "id":         "req-005",
+  "ok":         true,
+  "channel":    "A",
+  "enabled":    false,
+  "intensity":  0,
+  "mode":       1,
+  "connection": "disconnected"
+}
+```
+
+| `connection` 值 | 说明 |
+|----------------|------|
+| `"disconnected"` | 电极未接入 |
+| `"connected"` | 电极已接入，未放电 |
+| `"active"` | 电极已接入，正在放电 |
+
+---
+
+##### `get_battery` — 查询电池电量
+
+```json
+{ "action": "get_battery", "data": {} }
+```
+
+**响应**
+
+```json
+{ "id": "req-005", "ok": true, "battery": 64 }
+```
+
+---
+
+##### `get_step` — 查询当前步数
+
+```json
+{ "action": "get_step", "data": {} }
+```
+
+触发设备上报 `step` 事件。
+
+---
+
+##### `get_angle` — 查询角度数据
+
+```json
+{ "action": "get_angle", "data": {} }
+```
+
+触发设备上报 `angle` 事件。
+
+---
+
+##### `get_info` — 查询设备完整状态
+
+```json
+{ "action": "get_info", "data": {} }
+```
+
+**响应**
+
+```json
+{
+  "id":        "req-005",
+  "ok":        true,
+  "address":   "8117C168-FCD9-CC32-D733-44AEC28D5960",
+  "name":      "YYC-DJ-V2",
+  "type":      "estim",
+  "connected": true,
+  "battery":   64,
+  "channels": {
+    "A": { "enabled": false, "intensity": 0, "mode": 1, "connection": "disconnected" },
+    "B": { "enabled": false, "intensity": 0, "mode": 1, "connection": "disconnected" }
+  }
+}
+```
 
 ---
 
@@ -443,7 +638,87 @@ Client C ──┘                         └── BLE ── Device 2
 }
 ```
 
-#### 5.5 `error` — 设备异常
+#### 5.5 `channel_status` — EMS 通道状态变更（estim）
+
+通道连接状态或输出参数变化时主动上报（仅在状态实际改变时推送，去重）。
+
+```json
+{
+  "type":    "event",
+  "address": "8117C168-FCD9-CC32-D733-44AEC28D5960",
+  "event":   "channel_status",
+  "data": {
+    "type":       "channel_status",
+    "channel":    "A",
+    "enabled":    true,
+    "intensity":  80,
+    "mode":       3,
+    "connection": "active"
+  }
+}
+```
+
+#### 5.6 `motor_status` — 马达状态（estim）
+
+```json
+{
+  "type":    "event",
+  "address": "...",
+  "event":   "motor_status",
+  "data":    { "type": "motor_status", "state": 1 }
+}
+```
+
+#### 5.7 `step` — 计步数据（estim）
+
+```json
+{
+  "type":    "event",
+  "address": "...",
+  "event":   "step",
+  "data":    { "type": "step", "count": 1024 }
+}
+```
+
+#### 5.8 `angle` — 六轴传感器数据（estim）
+
+```json
+{
+  "type":    "event",
+  "address": "...",
+  "event":   "angle",
+  "data": {
+    "type":  "angle",
+    "accel": { "x": 120, "y": -340, "z": 980 },
+    "gyro":  { "x": 5,   "y": -12,  "z": 3   }
+  }
+}
+```
+
+原始值为 int16，需 App 端自行换算角度。
+
+#### 5.9 `device_error` — 设备异常上报（estim）
+
+```json
+{
+  "type":    "event",
+  "address": "...",
+  "event":   "device_error",
+  "data":    { "type": "device_error", "code": "data_error" }
+}
+```
+
+| `code` 值 | 含义 |
+|----------|------|
+| `"checksum_error"` | 校验码错误 |
+| `"header_error"` | 包头错误 |
+| `"command_error"` | 命令错误 |
+| `"data_error"` | 数据值超出有效范围 |
+| `"not_implemented"` | 暂未实现的命令 |
+
+> **常见触发原因**：向已停止的通道重复发送停止命令；自定义模式（`mode=17`）下 `freq=0`。
+
+#### 5.10 `error` — 设备异常（连接层）
 
 ```json
 {
@@ -478,12 +753,16 @@ Client C ──┘                         └── BLE ── Device 2
 用法: python main.py [mode] [选项]
 
 位置参数:
-  mode              运行模式：server（默认）或 tui
+  mode              运行模式：server（默认）、tui 或 agent
 
 选项:
   --tui             与 server 模式同用，额外启动 TUI
   --host HOST       监听 / 连接地址，默认 127.0.0.1
   --port PORT       监听 / 连接端口，默认 8765
+  --cloud           启用云中继连接（agent 模式必选）
+  --token TOKEN     云中继认证 Token
+  --agent-id ID     云中继 Agent ID
+  --log-level LVL   日志级别：DEBUG / INFO（默认）/ WARNING / ERROR
   -h, --help        显示帮助
 ```
 
@@ -504,31 +783,53 @@ python main.py server --tui
 
 # 自定义端口一键启动
 python main.py server --tui --port 9999
+
+# Agent 模式（云中继，允许远程客户端通过 cloud relay 控制本机设备）
+python main.py agent --cloud --token <TOKEN> --agent-id <ID>
+
+# 调试模式（输出完整 BLE 收发报文）
+python main.py server --tui --log-level DEBUG
 ```
 
 #### TUI 命令（底部输入框）
 
+##### 通用命令
+
 | 命令 | 缩写 | 参数 | 说明 |
 |------|------|------|------|
-| `scan` | `s` | `[秒数]` | 扫描设备，默认 5s |
+| `scan` | `s` | `[秒数]` | 扫描附近 BLE 设备，默认 5s |
 | `connect` | `c` | `<编号>` | 连接扫描列表中第 n 个设备（从 1 开始） |
 | `disconnect` | `d` | `<编号\|地址>` | 断开设备 |
-| `mode` | `m` | `<编号> <马达> <模式>` | 设置固定模式 |
-| `speed` | — | `<编号> <A> <B> <C>` | 实时速率控制（0–20） |
-| `stop` | — | `<编号>` | 停止所有马达 |
-| `info` | `i` | `<编号>` | 查询设备信息 |
+| `info` | `i` | `<编号\|地址>` | 查询设备完整信息 |
 | `list` | `l` | — | 列出所有已连接设备 |
 | `help` | `h` `?` | — | 显示帮助 |
 | `quit` | `q` `exit` | — | 退出 |
 
-`<编号>` 接受：
-- 扫描列表中的序号（`1`、`2`……）
-- BLE 地址的任意部分（如 `159E8`，大小写不敏感）
+##### Toy 设备命令（`device_type = "toy"`）
+
+| 命令 | 缩写 | 参数 | 说明 |
+|------|------|------|------|
+| `mode` | `m` | `<编号> <马达> <模式>` | 设置固定振动模式（0–19） |
+| `speed` | — | `<编号> <A> <B> <C>` | 设置三通道速率（0–20） |
+| `stop` | — | `<编号>` | 停止所有马达 |
+
+##### EStim 设备命令（`device_type = "estim"`，`ems` / `e` 前缀）
+
+| 命令 | 参数 | 说明 |
+|------|------|------|
+| `ems <编号> ch <通道> <强度> [模式]` | 通道=A/B/AB，强度 1–276，模式 1–17 | 开启通道并设置参数 |
+| `ems <编号> ch <通道> <强度> 17 <freq> <pulse>` | 模式 17 自定义：freq 1–100 Hz，pulse 0–100 | 自定义波形 |
+| `ems <编号> stop` | — | 停止双通道输出 |
+| `ems <编号> motor <状态>` | 状态=0/1/preset1/preset2/preset3 | 控制马达 |
+| `ems <编号> info` | — | 查询通道状态 + 电量 |
+
+> **编号说明**：`<编号>` 接受扫描列表序号（`1`、`2`…），或已连接设备的续编号，也接受 BLE 地址的任意片段（大小写不敏感，如 `C28D`）。
 
 #### TUI 键盘快捷键
 
 | 按键 | 功能 |
 |------|------|
+| `↑` / `↓` | 历史命令导航 |
 | `F5` | 扫描设备（5 秒） |
 | `F2` | 连接扫描列表中第一个设备 |
 | `F3` | 断开第一个已连接设备 |
@@ -716,9 +1017,49 @@ When device state changes, the server broadcasts to all connected WS clients:
 | `stop` | — | Stop all motors |
 | `get_info` | — | Query device info and battery |
 
-#### EStimDevice (`device_type: estim`, planned)
+#### EStimDevice (`device_type: estim`)
 
-See [EMS BLE Protocol](二代电击器蓝牙协议.md).
+| `action` | Key params | Description |
+|----------|-----------|-------------|
+| `set_channel` | `channel` (A/B/AB), `enabled` (bool), `intensity` (1–276), `mode` (1–17), `freq` (1–100, custom only), `pulse_us` (0–100, custom only) | Enable/configure EMS channel |
+| `stop` | — | Disable both channels (skips BLE write if already off) |
+| `set_motor` | `state` (0=off, 1=on, 0x11–0x13=preset 1–3) | Control motor |
+| `set_step` | `state` (start/stop/reset/pause/resume) | Step counter control |
+| `set_angle` | `enabled` (bool) | Enable/disable IMU angle reporting |
+| `get_channel` | `channel` (A/B) | Query channel state (also triggers `channel_status` event) |
+| `get_battery` | — | Query battery level (also triggers `battery` event) |
+| `get_step` | — | Request step count push |
+| `get_angle` | — | Request angle data push |
+| `get_info` | — | Return all channel states + battery inline |
+
+**`set_channel` example:**
+
+```json
+{
+  "type": "command",
+  "params": {
+    "address": "AA:BB:CC:DD:EE:FF",
+    "action": "set_channel",
+    "params": {
+      "channel": "A",
+      "enabled": true,
+      "intensity": 120,
+      "mode": 3
+    }
+  }
+}
+```
+
+**Custom waveform (mode 17):**
+
+```json
+{
+  "channel": "B", "enabled": true, "intensity": 80,
+  "mode": 17, "freq": 50, "pulse_us": 30
+}
+```
+
+> **Note:** `freq` must be 1–100 in custom mode (mode 17). Sending `freq=0` causes a `device_error` from the firmware.
 
 ---
 
@@ -728,29 +1069,52 @@ See [EMS BLE Protocol](二代电击器蓝牙协议.md).
 usage: python main.py [mode] [options]
 
 positional arguments:
-  mode              server (default) or tui
+  mode              server (default), tui, or agent
 
 options:
   --tui             also launch TUI alongside server
   --host HOST       listen/connect address, default 127.0.0.1
   --port PORT       listen/connect port, default 8765
+  --cloud           enable cloud relay connection (required for agent mode)
+  --token TOKEN     cloud relay authentication token
+  --agent-id ID     cloud relay agent ID
+  --log-level LVL   log level: DEBUG / INFO (default) / WARNING / ERROR
   -h, --help        show help
 ```
 
 ### 6. TUI Command Reference
+
+#### General
 
 | Command | Short | Args | Description |
 |---------|-------|------|-------------|
 | `scan` | `s` | `[sec]` | Scan for devices, default 5s |
 | `connect` | `c` | `<n>` | Connect n-th device in scan list |
 | `disconnect` | `d` | `<n\|addr>` | Disconnect device |
-| `mode` | `m` | `<n> <motors> <mode>` | Set fixed mode |
-| `speed` | — | `<n> <A> <B> <C>` | Real-time speed control (0–20) |
-| `stop` | — | `<n>` | Stop all motors |
-| `info` | `i` | `<n>` | Query device info |
+| `info` | `i` | `<n\|addr>` | Query device info |
 | `list` | `l` | — | List connected devices |
 | `help` | `h` `?` | — | Show help |
 | `quit` | `q` `exit` | — | Quit |
+
+#### Toy Device Commands
+
+| Command | Short | Args | Description |
+|---------|-------|------|-------------|
+| `mode` | `m` | `<n> <motors> <mode>` | Set fixed vibration mode (0–19) |
+| `speed` | — | `<n> <A> <B> <C>` | Real-time speed control (0–20) |
+| `stop` | — | `<n>` | Stop all motors |
+
+#### EStim Device Commands (`ems` / `e` prefix)
+
+| Command | Description |
+|---------|-------------|
+| `ems <n> ch <ch> <intensity> [mode]` | Enable channel; ch=A/B/AB, intensity 1–276, mode 1–17 (default 1) |
+| `ems <n> ch <ch> <intensity> 17 <freq> <pw>` | Custom waveform; freq 1–100 Hz, pulse width 0–100 µs |
+| `ems <n> stop` | Disable both EMS channels |
+| `ems <n> motor <state>` | Motor: 0=off, 1=on, preset1/preset2/preset3 |
+| `ems <n> info` | Query channel status + battery |
+
+`<n>` accepts scan-list index (`1`, `2`, …), continued index for non-scan connected devices, or any partial BLE address (case-insensitive).
 
 ### 7. Configuration Summary
 

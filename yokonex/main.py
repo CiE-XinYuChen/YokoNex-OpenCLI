@@ -59,7 +59,8 @@ def _run_tui(host: str, port: int) -> None:
 
 def main() -> None:
     # Register all device implementations before anything else
-    import yokonex.devices.toy.device  # noqa: F401
+    import yokonex.devices.toy.device    # noqa: F401
+    import yokonex.devices.estim.device  # noqa: F401
 
     args = parse_args()
     _setup_logging(args.log_level)

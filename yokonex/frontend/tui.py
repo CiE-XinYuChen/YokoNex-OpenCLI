@@ -7,8 +7,8 @@ Layout (full-screen):
   │                               │ 00:14:36  battery: 80%                     │
   ├───────────────────────────────┴────────────────────────────────────────────┤
   │ ▶ _                                                                        │
-  │ scan | connect <n> | disconnect <n> | mode <n> <motors> <m> | speed <n>   │
-  │ stop <n> | info <n> | list | help                                          │
+  │ scan | connect <n> | disconnect <n> | mode/speed/stop/info (toy)           │
+  │ ems <n> <ch> <intensity> [mode] [freq] [pulse] | stop <n> | info <n>       │
   └────────────────────────────────────────────────────────────────────────────┘
 """
 from __future__ import annotations
@@ -20,6 +20,8 @@ import sys
 from collections import deque
 from datetime import datetime
 from typing import Dict, List, Optional
+
+from prompt_toolkit.document import Document
 
 import websockets
 from prompt_toolkit import Application
@@ -153,6 +155,9 @@ class YokoNexApp:
             accept_handler=self._on_enter,
         )
         self._scanning = False
+        self._history:      List[str] = []   # command history
+        self._history_pos:  int = -1          # -1 = not browsing
+        self._history_draft: str = ""         # saved draft before browsing up
 
     # ── Build layout ───────────────────────────────────────────────────────
 
@@ -170,6 +175,14 @@ class YokoNexApp:
         @kb.add("f3")
         def _(event):
             asyncio.get_event_loop().create_task(self._quick_disconnect())
+
+        @kb.add("up")
+        def _(event):
+            self._history_up()
+
+        @kb.add("down")
+        def _(event):
+            self._history_down()
 
         @kb.add("c-c")
         @kb.add("q", filter=Condition(lambda: not self._input_focused()))
@@ -236,9 +249,9 @@ class YokoNexApp:
     def _hint_text(self) -> FormattedText:
         return FormattedText([
             ("class:hint",
-             "  scan | connect <n> | disconnect <n> | "
-             "mode <n> <motors> <m> | speed <n> <a> <b> <c> | "
-             "stop <n> | info <n> | list | help"),
+             "  scan | connect <n> | disconnect <n> | stop <n> | info <n> | list"
+             "  │  ems <n> <A|B|AB> <intensity|off> [mode] [freq] [pulse]"
+             "  │  help"),
         ])
 
     def _devices_text(self) -> FormattedText:
@@ -256,15 +269,30 @@ class YokoNexApp:
                 items.append(("", f" [{i}] "))
                 items.append(("class:device-ok" if conn else "", f"{name}"))
                 items.append(("class:device-off", f"  {dtype}\n"))
-            # show connected devices not in scan results
+            # show connected devices not in scan results (continue numbering)
+            next_idx = len(self._scan_results) + 1
             for addr, d in self._devices.items():
                 if not any(r["address"] == addr for r in self._scan_results):
-                    items.append(("class:device-ok", f" ✓ {d.get('name', addr[-8:])}\n"))
+                    name  = d.get("name") or addr[-8:]
+                    dtype = d.get("type", "")
+                    items.append(("class:device-ok", f" ✓ [{next_idx}] "))
+                    items.append(("class:device-ok", f"{name}"))
+                    items.append(("class:device-off", f"  {dtype}\n"))
+                    next_idx += 1
         return FormattedText(items)
 
     def _log_text(self) -> FormattedText:
         items: list = [("class:panel-title", " LOG\n"), ("", " " + "─" * 39 + "\n")]
-        for style, text in self._log_lines:
+        # Determine how many lines fit so we always show the tail (auto-scroll).
+        # Fixed chrome: header(1) + divider(1) + input(1) + hint(1) = 4 rows,
+        # plus the two panel-header rows above = 6 total overhead.
+        try:
+            from prompt_toolkit.application import get_app
+            rows = get_app().output.get_size().rows
+            available = max(1, rows - 6)
+        except Exception:
+            available = 40
+        for style, text in list(self._log_lines)[-available:]:
             items.append((style, f" {text}\n"))
         return FormattedText(items)
 
@@ -275,6 +303,28 @@ class YokoNexApp:
             return self._app.layout.has_focus(self._input_buf)
         except Exception:
             return False
+
+    def _history_up(self) -> None:
+        if not self._history:
+            return
+        if self._history_pos == -1:
+            self._history_draft = self._input_buf.text
+            self._history_pos   = len(self._history) - 1
+        elif self._history_pos > 0:
+            self._history_pos -= 1
+        text = self._history[self._history_pos]
+        self._input_buf.set_document(Document(text, len(text)))
+
+    def _history_down(self) -> None:
+        if self._history_pos == -1:
+            return
+        if self._history_pos < len(self._history) - 1:
+            self._history_pos += 1
+            text = self._history[self._history_pos]
+        else:
+            self._history_pos = -1
+            text = self._history_draft
+        self._input_buf.set_document(Document(text, len(text)))
 
     # ── Logging helpers ────────────────────────────────────────────────────
 
@@ -293,7 +343,11 @@ class YokoNexApp:
     def _on_enter(self, buf: Buffer) -> None:
         line = buf.text.strip()
         buf.reset()
+        self._history_pos  = -1
+        self._history_draft = ""
         if line:
+            if not self._history or self._history[-1] != line:
+                self._history.append(line)
             asyncio.get_event_loop().create_task(self._dispatch_cmd(line))
 
     async def _dispatch_cmd(self, line: str) -> None:
@@ -330,9 +384,43 @@ class YokoNexApp:
                 addr = self._resolve_addr(parts[1] if len(parts) > 1 else "1")
                 await self._cmd(addr, "stop", {})
 
+            case "ems" | "estim" | "e":
+                # ems <n> <channel> <intensity|off> [mode=1] [freq=0] [pulse=0]
+                # channel: A / B / AB
+                # intensity: 1-276, or "off" to disable
+                # mode: 1-16 fixed, 17 = custom
+                # freq: 1-100 Hz (custom mode only)
+                # pulse: 0-100 µs (custom mode only)
+                if len(parts) < 4:
+                    self._logw("usage: ems <n> <A|B|AB> <intensity|off> [mode] [freq] [pulse]")
+                    return
+                addr    = self._resolve_addr(parts[1])
+                channel = parts[2].upper()
+                raw_int = parts[3].lower()
+                if raw_int == "off":
+                    await self._cmd(addr, "set_channel",
+                                    {"channel": channel, "enabled": False})
+                else:
+                    intensity = max(1, int(raw_int))   # clamp: 0 is invalid on device
+                    mode      = int(parts[4]) if len(parts) > 4 else 1
+                    freq      = int(parts[5]) if len(parts) > 5 else 0
+                    pulse_us  = int(parts[6]) if len(parts) > 6 else 0
+                    await self._cmd(addr, "set_channel", {
+                        "channel":   channel,
+                        "enabled":   True,
+                        "intensity": intensity,
+                        "mode":      mode,
+                        "freq":      freq,
+                        "pulse_us":  pulse_us,
+                    })
+
             case "info" | "i":
                 addr = self._resolve_addr(parts[1] if len(parts) > 1 else "1")
                 await self._cmd(addr, "get_info", {})
+                # also query battery for estim
+                dev = self._devices.get(addr or "")
+                if dev and dev.get("type") == "estim":
+                    await self._cmd(addr, "get_battery", {})
 
             case "list" | "l":
                 if self._devices:
@@ -342,10 +430,17 @@ class YokoNexApp:
                     self._logw("No connected devices")
 
             case "help" | "h" | "?":
+                self._logi("── General ──────────────────────────────────")
                 self._logi("scan [sec]  connect <n>  disconnect <n>")
-                self._logi("mode <n> <motors> <mode>  (motors: A/B/C/AB/ABC)")
-                self._logi("speed <n> <a> <b> <c>  (0–20 each)")
                 self._logi("stop <n>  info <n>  list")
+                self._logi("── Toy (飞机杯/跳蛋) ────────────────────────")
+                self._logi("mode <n> <motors> <mode>  (motors: A/B/C/AB/ABC, mode: 1-4)")
+                self._logi("speed <n> <a> <b> <c>  (0–20 each)")
+                self._logi("── Estim (二代电击器) ────────────────────────")
+                self._logi("ems <n> <ch> <intensity> [mode] [freq] [pulse]")
+                self._logi("  ch: A / B / AB  intensity: 1-276")
+                self._logi("  mode: 1-16 fixed, 17=custom  freq: 1-100Hz  pulse: 0-100µs")
+                self._logi("  ems 1 A off  → disable channel A")
 
             case "quit" | "q" | "exit":
                 if self._app:
@@ -433,10 +528,26 @@ class YokoNexApp:
             if resp.get("ok"):
                 extra = ""
                 if action == "get_info":
-                    extra = (f"  A:{resp.get('motor_a_modes')} "
-                             f"B:{resp.get('motor_b_modes')} "
-                             f"C:{resp.get('motor_c_modes')} modes  "
-                             f"battery:{resp.get('battery')}%")
+                    # toy
+                    if "motor_a_modes" in resp:
+                        extra = (f"  A:{resp.get('motor_a_modes')} "
+                                 f"B:{resp.get('motor_b_modes')} "
+                                 f"C:{resp.get('motor_c_modes')} modes  "
+                                 f"battery:{resp.get('battery')}%")
+                    # estim
+                    elif "channels" in resp:
+                        chs = resp["channels"]
+                        parts = []
+                        for ch, s in chs.items():
+                            if s.get("enabled"):
+                                parts.append(
+                                    f"{ch}:on intensity={s.get('intensity')} mode={s.get('mode')}"
+                                )
+                            else:
+                                parts.append(f"{ch}:off")
+                        extra = "  " + "  ".join(parts)
+                        if resp.get("battery") is not None:
+                            extra += f"  battery:{resp['battery']}%"
                 self._logok(f"✓ {action}{extra}")
             else:
                 self._loge(f"✗ {action}: {resp.get('error')}")
@@ -449,6 +560,12 @@ class YokoNexApp:
             idx = int(token) - 1
             if 0 <= idx < len(self._scan_results):
                 return self._scan_results[idx]["address"]
+            # indices beyond scan_results map to non-scan connected devices
+            extra = [a for a in self._devices
+                     if not any(r["address"] == a for r in self._scan_results)]
+            extra_idx = idx - len(self._scan_results)
+            if 0 <= extra_idx < len(extra):
+                return extra[extra_idx]
         except ValueError:
             pass
         # partial address match
@@ -485,6 +602,29 @@ class YokoNexApp:
                     f"B:{data.get('motor_b_modes')} "
                     f"C:{data.get('motor_c_modes')} modes"
                 )
+            case "channel_status":
+                ch   = data.get("channel", "?")
+                conn = data.get("connection", "?")
+                if data.get("enabled"):
+                    self._logi(
+                        f"⚡ {short}  ch-{ch} on  "
+                        f"intensity={data.get('intensity')}  "
+                        f"mode={data.get('mode')}  [{conn}]"
+                    )
+                else:
+                    self._logi(f"⚡ {short}  ch-{ch} off  [{conn}]")
+            case "step":
+                self._logi(f"👣 {short}  steps={data.get('count')}")
+            case "angle":
+                acc = data.get("accel", {})
+                gyr = data.get("gyro",  {})
+                self._logi(
+                    f"📐 {short}  "
+                    f"accel=({acc.get('x')},{acc.get('y')},{acc.get('z')})  "
+                    f"gyro=({gyr.get('x')},{gyr.get('y')},{gyr.get('z')})"
+                )
+            case "device_error":
+                self._loge(f"⚠ {short}  {data.get('code')}")
             case "error":
                 self._loge(f"⚠ {short}  {data.get('message')}")
             case _:
