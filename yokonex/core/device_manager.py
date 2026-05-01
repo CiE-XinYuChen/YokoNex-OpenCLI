@@ -25,8 +25,12 @@ class DeviceManager:
         self._event_listeners.append(callback)
 
     async def connect(self, address: str, name: str, device_type: str) -> Dict:
-        if address in self._devices and self._devices[address].is_connected:
-            return {"ok": False, "error": "already connected"}
+        existing = self._devices.get(address)
+        if existing is not None:
+            if existing.is_connected:
+                return {"ok": False, "error": "already connected"}
+            # Stale entry from a previous disconnect — clean it up first
+            del self._devices[address]
 
         cls = get_device_cls(device_type)
         if cls is None:

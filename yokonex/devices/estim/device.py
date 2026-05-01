@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, Dict, List
 
 from bleak import BleakClient
@@ -38,6 +39,7 @@ class EStimDevice(BaseDevice):
         }
         self.battery: int | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._last_resync: float = 0.0  # monotonic time of last _resync_channels call
 
     # ── BaseDevice interface ───────────────────────────────────────────────
 
@@ -67,6 +69,11 @@ class EStimDevice(BaseDevice):
         except Exception as exc:
             self._connected = False
             log.error("Connect failed %s: %s", self.address, exc)
+            try:
+                await self._client.disconnect()
+            except Exception:
+                pass
+            self._client = None
             await self._emit("error", {"message": str(exc)})
             return False
 
@@ -169,6 +176,18 @@ class EStimDevice(BaseDevice):
 
     # ── Internal ───────────────────────────────────────────────────────────
 
+    async def _resync_channels(self) -> None:
+        now = time.monotonic()
+        if now - self._last_resync < 2.0:
+            return  # cooldown: don't resync more than once every 2 s
+        self._last_resync = now
+        try:
+            await self._write(proto.build_query(proto.QUERY_CHANNEL_A))
+            await asyncio.sleep(0.05)
+            await self._write(proto.build_query(proto.QUERY_CHANNEL_B))
+        except Exception as exc:
+            log.error("Resync failed: %s", exc)
+
     async def _write(self, data: bytes) -> None:
         log.debug("→ tx  %s", data.hex())
         await self._client.write_gatt_char(WRITE_UUID, data, response=False)
@@ -185,14 +204,19 @@ class EStimDevice(BaseDevice):
     def _on_notify(self, _handle: int, data: bytearray) -> None:
         log.debug("← rx  %s", data.hex())
         parsed = proto.parse_notify(bytes(data))
-        if not parsed:
+        if not parsed or parsed["type"] == "raw":
+            if parsed:
+                log.debug("unhandled notify: %s", parsed["hex"])
             return
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._apply_notify(parsed), self._loop
+            )
 
+    async def _apply_notify(self, parsed: dict) -> None:
+        """Process a parsed notify packet in the asyncio loop thread."""
         emit = True
         match parsed["type"]:
-            case "raw":
-                log.debug("unhandled notify: %s", parsed["hex"])
-                return
             case "channel_status":
                 ch = parsed.get("channel")
                 if ch in self.channels:
@@ -212,12 +236,11 @@ class EStimDevice(BaseDevice):
                 self.battery = parsed["level"]
             case "device_error":
                 log.warning("Device error %s: %s", self.address, parsed["code"])
+                await self._resync_channels()
+                emit = False
 
-        if emit and self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                self._emit(parsed["type"], parsed),
-                self._loop,
-            )
+        if emit:
+            await self._emit(parsed["type"], parsed)
 
     def to_dict(self) -> dict:
         d = super().to_dict()
