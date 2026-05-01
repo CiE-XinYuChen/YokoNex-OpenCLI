@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "yokonex-opencli"
-version         = "1.0.0"
+version         = "1.1.0"
 description     = "YokoNex Unified BLE Device Client / 役次元统一蓝牙设备客户端"
 readme          = "README.md"
 license         = { text = "MIT" }
