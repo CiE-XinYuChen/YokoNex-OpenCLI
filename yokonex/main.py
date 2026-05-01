@@ -2,10 +2,9 @@
 """YokoNex — Unified BLE device client.
 
 Usage:
-  yokonex server                        Start WS server (BLE bridge)
-  yokonex tui                           Start terminal UI
-  yokonex server --tui                  Start server + TUI together
-  yokonex agent --cloud wss://...       Bridge local server to cloud relay
+  yokonex server              Start WS server (BLE bridge)
+  yokonex tui                 Start terminal UI
+  yokonex server --tui        Start server + TUI together
 """
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ def parse_args():
     )
     p.add_argument(
         "mode",
-        choices=["server", "tui", "agent"],
+        choices=["server", "tui"],
         nargs="?",
         default="server",
         help="Run mode (default: server)",
@@ -39,13 +38,6 @@ def parse_args():
     p.add_argument("--tui",  action="store_true", help="Launch TUI alongside server")
     p.add_argument("--host", default="127.0.0.1",  help="WS host (default: 127.0.0.1)")
     p.add_argument("--port", default=8765, type=int, help="WS port (default: 8765)")
-    # agent mode
-    p.add_argument("--cloud",    default="", metavar="URL",
-                   help="Cloud relay WS URL (agent mode), e.g. wss://my-server:8080")
-    p.add_argument("--token",    default="yokonex-agent-dev", metavar="TOKEN",
-                   help="Agent auth token for cloud relay (default: yokonex-agent-dev)")
-    p.add_argument("--agent-id", default="", metavar="ID",
-                   help="Agent identifier shown to mobile clients (default: auto-generated)")
     p.add_argument(
         "--log-level",
         default="INFO",
@@ -60,11 +52,6 @@ async def _run_server(host: str, port: int) -> None:
     await WSServer(host, port).start()
 
 
-async def _run_agent(local_url: str, cloud_url: str, token: str, agent_id: str) -> None:
-    from yokonex.core.cloud_bridge import CloudBridge
-    await CloudBridge(local_url, cloud_url, token, agent_id).run()
-
-
 def _run_tui(host: str, port: int) -> None:
     from yokonex.frontend.tui import run_tui
     run_tui(ws_url=f"ws://{host}:{port}")
@@ -77,14 +64,7 @@ def main() -> None:
     args = parse_args()
     _setup_logging(args.log_level)
 
-    if args.mode == "agent":
-        if not args.cloud:
-            print("error: --cloud <URL> is required for agent mode")
-            raise SystemExit(1)
-        local_url = f"ws://{args.host}:{args.port}"
-        asyncio.run(_run_agent(local_url, args.cloud, args.token, args.agent_id))
-
-    elif args.mode == "server" and not args.tui:
+    if args.mode == "server" and not args.tui:
         asyncio.run(_run_server(args.host, args.port))
 
     elif args.mode == "tui":

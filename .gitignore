@@ -38,19 +38,5 @@ htmlcov/
 
 # Logs
 *.log
-
-# Node
-YokoNex-Cloud/node_modules/
-YokoNex-Cloud/.env
-
-# Flutter
-YokoNex-Flutter/.dart_tool/
-YokoNex-Flutter/.flutter-plugins
-YokoNex-Flutter/.flutter-plugins-dependencies
-YokoNex-Flutter/build/
-YokoNex-Flutter/android/.gradle/
-YokoNex-Flutter/ios/Pods/
-YokoNex-Flutter/ios/.symlinks/
-
 #subdemo
 YCY-VRCOSC
