@@ -20,47 +20,80 @@
 
 ### 简介
 
-YokoNex OpenCLI 是役次元（YokoNex）系列智能设备的统一蓝牙控制客户端。通过 WebSocket 桥接层，任意数量的设备可以同时连接并独立控制；上层客户端（TUI、Web、脚本）通过标准 JSON API 与设备通信，无需关心底层蓝牙细节。
+YokoNex OpenCLI 是役次元（YokoNex）系列智能设备的统一蓝牙控制客户端。通过 WebSocket 桥接层，任意数量的设备可以同时连接并独立控制；上层客户端（TUI、Web、脚本、移动 App）通过标准 JSON API 与设备通信，无需关心底层蓝牙细节。
 
-### 特性
+本仓库包含四个组件：
 
-- **统一架构** — 飞机杯、跳蛋、电击器等所有设备共用同一套 WS API
-- **多设备并发** — 可同时连接任意数量设备，互不干扰
+| 目录 | 说明 |
+|------|------|
+| `yokonex/` | Python BLE 服务端（可打包为 whl） |
+| `YCY-VRCOSC/` | VRChat OSC 桥接 GUI（PySide6） |
+| `YokoNex-Cloud/` | Node.js 云端 WS 中继服务器 |
+| `YokoNex-Flutter/` | Flutter 移动客户端（Android / iOS） |
+
+### 整体架构
+
+```
+[Flutter App (Android/iOS)]     [VRChat (PC)]
+        │ wss://                      │ OSC UDP:9001
+        ▼                             ▼
+[YokoNex-Cloud]            [YCY-VRCOSC GUI]
+  Node.js 云端中继                  │
+        │ ws://                       │
+        ▼                             ▼
+[yokonex agent --cloud]     [YokoNex WS Server  ws://127.0.0.1:8765]
+   Python 桥接          ──────────────┘
+                                      │ BLE (bleak)
+                                      ▼
+                                  [设备 (YSKJ_TOY_BLE V1.1)]
+```
 
 ### 支持设备
 
 | 设备类型 | `device_type` | BLE 服务 UUID | 名称前缀 | 协议文档 |
 |---------|--------------|--------------|---------|---------|
 | 役次元 榨精机PRO | `toy` | `FF40` | `YCY-FJB-03` | [飞机杯蓝牙协议](docs/飞机杯蓝牙协议.md) |
+
 ```
-该设备拥有3个马达，A为主电机，B为吮吸强度，C为震动强度。
+该设备拥有3个马达，A为主电机，B为吮吸强度，C为震动强度。速度范围 0-20，模式 1-4。
 ```
 
+---
 
-### 快速开始
+### 一、Python BLE 服务端（yokonex）
 
-#### 1. 安装依赖
+#### 安装
 
 ```bash
 pip install -r requirements.txt
+# 或直接安装 whl
+pip install dist/yokonex_opencli-*.whl
 ```
 
-#### 2. 启动
+#### 启动
 
 ```bash
 # 推荐：服务端 + TUI 同时启动
-python main.py server --tui
+yokonex server --tui
 
-# 分开启动（两个终端）
-python main.py server          # 终端 1：启动 WS 服务端
-python main.py tui             # 终端 2：启动 TUI
+# 仅启动服务端（供其他客户端连接）
+yokonex server
 
 # 自定义端口
-python main.py server --host 0.0.0.0 --port 9000
-python main.py tui   --host 192.168.1.100 --port 9000
+yokonex server --host 0.0.0.0 --port 9000
 ```
 
-#### 3. TUI 使用
+#### 云桥模式（配合 YokoNex-Cloud 使用）
+
+```bash
+# 先在本机启动 BLE 服务端
+yokonex server
+
+# 另开终端，注册为云端 Agent
+yokonex agent --cloud wss://your-server:8080 --token <AGENT_TOKEN> --agent-id home-pc
+```
+
+#### TUI 快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -78,44 +111,85 @@ disconnect <编号|地址>        断开连接
 mode <编号> <马达> <模式>      设置固定模式，马达：A/B/C/AB/ABC
 speed <编号> <A> <B> <C>     实时速率，0–20
 stop <编号>                  停止所有马达
-info <编号>                   查询设备信息和电量
+info <编号>                  查询设备信息和电量
 list                         列出所有已连接设备
 help                         帮助
 ```
+
+---
+
+### 二、VRChat OSC 桥接（YCY-VRCOSC）
+
+通过 VRChat OSC 接口控制设备，支持 SoundPad 面板 + PhysBone 交互参数映射。详见 [YCY-VRCOSC/README.md](YCY-VRCOSC/README.md)。
+
+```bash
+cd YCY-VRCOSC
+pip install -r requirements.txt
+python src/app.py
+```
+
+---
+
+### 三、云端 WS 中继（YokoNex-Cloud）
+
+Node.js 服务器，将远程移动客户端与本地 Python BLE 服务端桥接。透明代理，whl 升级后无需修改。详见 [YokoNex-Cloud/README.md](YokoNex-Cloud/README.md)。
+
+```bash
+cd YokoNex-Cloud
+cp .env.example .env   # 配置 AGENT_TOKEN 和 CLIENT_TOKEN
+npm install
+npm start
+```
+
+---
+
+### 四、Flutter 移动客户端（YokoNex-Flutter）
+
+Android / iOS 远程控制 App，通过云端 WS 服务操控设备。详见 [YokoNex-Flutter/README.md](YokoNex-Flutter/README.md)。
+
+```bash
+cd YokoNex-Flutter
+flutter pub get
+flutter run
+```
+
+---
 
 ### 项目结构
 
 ```
 YokoNex-OpenCLI/
-├── main.py                  # 入口
-├── requirements.txt
-├── core/
-│   ├── base_device.py       # 设备抽象基类（扩展接口）
-│   ├── device_manager.py    # 多设备生命周期管理
-│   └── ws_server.py         # WebSocket 服务端
-├── devices/
-│   ├── registry.py          # 设备类型注册表
-│   └── toy/
-│       ├── protocol.py      # YSKJ_TOY_BLE V1.1 报文构建/解析
-│       └── device.py        # ToyDevice 实现
-├── ble/
-│   └── scanner.py           # BLE 扫描器
-├── frontend/
-│   └── tui.py               # 终端 UI
-└── docs/
-    ├── union-api.md          # 统一 WS API 文档
-    ├── 飞机杯蓝牙协议.md
-    └── 二代电击器蓝牙协议.md
+├── yokonex/                     # Python BLE 服务端 (whl)
+│   ├── main.py                  # CLI 入口（server / tui / agent）
+│   ├── core/
+│   │   ├── ws_server.py         # WebSocket 服务端
+│   │   ├── device_manager.py    # 多设备生命周期管理
+│   │   ├── base_device.py       # 设备抽象基类
+│   │   └── cloud_bridge.py      # 云桥（agent 模式）
+│   ├── devices/
+│   │   ├── registry.py          # 设备类型注册表
+│   │   └── toy/
+│   │       ├── protocol.py      # YSKJ_TOY_BLE V1.1 报文
+│   │       └── device.py        # ToyDevice 实现
+│   ├── ble/scanner.py
+│   └── frontend/tui.py
+├── YCY-VRCOSC/                  # VRChat OSC 桥接 GUI
+├── YokoNex-Cloud/               # Node.js 云端 WS 中继
+│   └── src/index.js
+└── YokoNex-Flutter/             # Flutter 移动客户端
+    └── lib/
+        ├── api/yokonex_client.dart
+        └── screens/
 ```
 
 ### 添加新设备类型
 
-1. 新建 `devices/<type>/` 目录
+1. 新建 `yokonex/devices/<type>/` 目录
 2. 实现 `protocol.py`（报文构建/解析）
 3. 实现继承 `BaseDevice` 的设备类，添加 `@register` 装饰器
-4. 在 `main.py` 顶部添加一行 `import devices.<type>.device`
+4. 在 `yokonex/main.py` 顶部 import 新模块
 
-详见 [Union API 文档 — 扩展指南](docs/union-api.md#扩展指南)。
+云端中继和移动客户端**无需修改**即可支持新设备类型。
 
 ### 免责声明
 
@@ -127,35 +201,32 @@ YokoNex-OpenCLI/
 
 ### Overview
 
-YokoNex OpenCLI is a unified Bluetooth control client for the YokoNex series of smart devices. A WebSocket bridge layer allows any number of devices to be connected simultaneously and controlled independently. Upper-layer clients (TUI, web, scripts) communicate with devices through a standard JSON API without worrying about the underlying BLE details.
+YokoNex OpenCLI is a unified Bluetooth control client for the YokoNex series of smart devices. A WebSocket bridge layer allows any number of devices to be connected simultaneously and controlled independently. Upper-layer clients (TUI, web, scripts, mobile apps) communicate through a standard JSON API without dealing with BLE details.
 
-### Features
+This repository contains four components:
 
-- **Unified architecture** — All devices (masturbator, vibrator, e-stim, etc.) share the same WS API
-- **Multi-device concurrency** — Connect any number of devices simultaneously without interference
-- **Dual device discovery** — Supports both Service UUID matching and device name prefix matching (handles devices that don't advertise UUIDs in their broadcast packets)
-- **Full-terminal TUI** — Full-screen terminal UI built on `prompt_toolkit`, no browser required
-- **Easy to extend** — Adding a new device type only requires a new module with `@register`, no changes to core code
-- **Open protocol** — Based on the official YokoNex open-source BLE protocol
+| Directory | Description |
+|-----------|-------------|
+| `yokonex/` | Python BLE server (packaged as whl) |
+| `YCY-VRCOSC/` | VRChat OSC bridge GUI (PySide6) |
+| `YokoNex-Cloud/` | Node.js cloud WS relay server |
+| `YokoNex-Flutter/` | Flutter mobile client (Android / iOS) |
 
 ### Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                        Clients                           │
-│         TUI (prompt_toolkit)  ·  Web  ·  Script          │
-└──────────────────────┬───────────────────────────────────┘
-                       │  WebSocket (JSON)
-┌──────────────────────▼───────────────────────────────────┐
-│                  WS Server (ws_server.py)                 │
-│              core/device_manager.py                       │
-└────────┬─────────────────────┬────────────────────────────┘
-         │ BLE (bleak)         │ BLE (bleak)
-┌────────▼──────┐     ┌────────▼──────┐     ┌─────────────┐
-│  ToyDevice    │     │  EStimDevice  │     │  Future...  │
-│(masturbator/  │     │  (e-stim)     │     │             │
-│  vibrator)    │     │               │     │             │
-└───────────────┘     └───────────────┘     └─────────────┘
+[Flutter App (Android/iOS)]     [VRChat (PC)]
+        │ wss://                      │ OSC UDP:9001
+        ▼                             ▼
+[YokoNex-Cloud]            [YCY-VRCOSC GUI]
+  Node.js relay                       │
+        │ ws://                       │
+        ▼                             ▼
+[yokonex agent --cloud]   [YokoNex WS Server  ws://127.0.0.1:8765]
+   Python bridge      ────────────────┘
+                                      │ BLE (bleak)
+                                      ▼
+                                [Device (YSKJ_TOY_BLE V1.1)]
 ```
 
 ### Supported Devices
@@ -166,58 +237,48 @@ YokoNex OpenCLI is a unified Bluetooth control client for the YokoNex series of 
 
 ### Quick Start
 
-#### 1. Install dependencies
+#### Python BLE Server
 
 ```bash
 pip install -r requirements.txt
+
+# Start server + TUI
+yokonex server --tui
+
+# Cloud agent mode (bridge to YokoNex-Cloud)
+yokonex server &
+yokonex agent --cloud wss://your-server:8080 --token <AGENT_TOKEN> --agent-id home-pc
 ```
 
-#### 2. Run
+#### Cloud Relay (Node.js)
 
 ```bash
-# Recommended: start server + TUI together
-python main.py server --tui
-
-# Separate (two terminals)
-python main.py server          # Terminal 1: WS server
-python main.py tui             # Terminal 2: TUI
-
-# Custom host/port
-python main.py server --host 0.0.0.0 --port 9000
-python main.py tui   --host 192.168.1.100 --port 9000
+cd YokoNex-Cloud
+cp .env.example .env  # set AGENT_TOKEN and CLIENT_TOKEN
+npm install && npm start
 ```
 
-#### 3. TUI shortcuts
+#### Flutter Mobile App
 
-| Key | Action |
-|-----|--------|
-| `F5` | Scan for devices |
-| `F2` | Connect first device in scan list |
-| `F3` | Disconnect first connected device |
-| `q` | Quit |
-
-Command line (bottom input box):
-
+```bash
+cd YokoNex-Flutter
+flutter pub get && flutter run
 ```
-scan [sec]                   Scan for devices, default 5 sec
-connect <n>                  Connect n-th device in scan list
-disconnect <n|addr>          Disconnect device
-mode <n> <motors> <mode>     Set fixed mode; motors: A/B/C/AB/ABC
-speed <n> <A> <B> <C>        Real-time speed, 0–20 per motor
-stop <n>                     Stop all motors
-info <n>                     Query device info and battery
-list                         List all connected devices
-help                         Show help
+
+#### VRChat OSC Bridge
+
+```bash
+cd YCY-VRCOSC && pip install -r requirements.txt && python src/app.py
 ```
 
 ### Adding a New Device Type
 
-1. Create `devices/<type>/` directory
+1. Create `yokonex/devices/<type>/` directory
 2. Implement `protocol.py` (packet builder/parser)
-3. Implement a class inheriting `BaseDevice` with `@register` decorator
-4. Add `import devices.<type>.device` at the top of `main.py`
+3. Subclass `BaseDevice` with `@register` decorator
+4. Import the new module in `yokonex/main.py`
 
-See the [Union API — Extension Guide](docs/union-api.md#extension-guide).
+The cloud relay and mobile client require **no changes** to support new device types.
 
 ### Disclaimer
 
