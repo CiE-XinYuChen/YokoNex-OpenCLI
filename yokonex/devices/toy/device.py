@@ -60,6 +60,11 @@ class ToyDevice(BaseDevice):
         except Exception as exc:
             self._connected = False
             log.error("Connect failed %s: %s", self.address, exc)
+            try:
+                await self._client.disconnect()
+            except Exception:
+                pass
+            self._client = None
             await self._emit("error", {"message": str(exc)})
             return False
 

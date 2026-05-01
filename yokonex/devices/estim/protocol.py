@@ -81,28 +81,32 @@ def build_channel(
 ) -> bytes:
     """
     channel  : "A" | "B" | "AB"
-    enabled  : True = 开启输出
-    intensity: 1–276（关闭时忽略）
+    enabled  : False 或 intensity<=0 → 发送 intensity=0 关闭通道
+    intensity: 1–276（0 等同于 enabled=False）
     mode     : 1–16 固定模式；17 (0x11) 自定义模式
-    freq     : 自定义模式频率，1–100 Hz（固定模式填 0）
+    freq     : 自定义模式频率，0–100 Hz（固定模式填 0）
     pulse_us : 自定义模式脉冲时间，0–100 µs（固定模式填 0）
+
+    协议格式（无 enabled 字节）：
+      35 11 ch HI LO MODE FQ PU checksum
+    关闭通道用 intensity=0：
+      35 11 ch 00 00 00 00 00 checksum
     """
-    ch  = _CHANNEL_BYTES.get(channel.upper(), CHANNEL_A)
-    en  = 0x01 if enabled else 0x00
-    if not enabled:
-        return _pack(HEADER, CMD_CHANNEL, ch, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+    ch = _CHANNEL_BYTES.get(channel.upper(), CHANNEL_A)
+    if not enabled or intensity <= 0:
+        return _pack(HEADER, CMD_CHANNEL, ch, 0x00, 0x00, 0x00, 0x00, 0x00)
     itensity = _clamp_intensity(intensity)
     hi  = (itensity >> 8) & 0xFF
     lo  = itensity & 0xFF
     md  = max(1, min(MODE_CUSTOM, int(mode))) & 0xFF
-    fq  = max(1, min(100, int(freq)))   & 0xFF if md == MODE_CUSTOM else 0
+    fq  = max(0, min(100, int(freq)))    & 0xFF if md == MODE_CUSTOM else 0
     pu  = max(0, min(100, int(pulse_us))) & 0xFF if md == MODE_CUSTOM else 0
-    return _pack(HEADER, CMD_CHANNEL, ch, en, hi, lo, md, fq, pu)
+    return _pack(HEADER, CMD_CHANNEL, ch, hi, lo, md, fq, pu)
 
 
 def build_stop() -> bytes:
-    """同时关闭 A、B 两路通道。"""
-    return _pack(HEADER, CMD_CHANNEL, CHANNEL_AB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+    """同时关闭 A、B 两路通道（intensity=0）。"""
+    return _pack(HEADER, CMD_CHANNEL, CHANNEL_AB, 0x00, 0x00, 0x00, 0x00, 0x00)
 
 
 def build_motor(state: int) -> bytes:

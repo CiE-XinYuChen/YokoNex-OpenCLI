@@ -71,10 +71,17 @@ class CloudBridge:
                     raise RuntimeError(f"Cloud auth failed: {hello}")
                 log.info("Registered as agent '%s'", hello.get("agent_id", self.agent_id))
 
-                await asyncio.gather(
-                    self._cloud_to_local(cloud_ws, local_ws),
-                    self._local_to_cloud(local_ws, cloud_ws),
-                )
+                tasks = [
+                    asyncio.ensure_future(self._cloud_to_local(cloud_ws, local_ws)),
+                    asyncio.ensure_future(self._local_to_cloud(local_ws, cloud_ws)),
+                ]
+                try:
+                    await asyncio.gather(*tasks)
+                except Exception:
+                    for t in tasks:
+                        t.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    raise
 
     async def _cloud_to_local(self, cloud_ws, local_ws) -> None:
         """Forward commands from cloud clients to local yokonex server."""

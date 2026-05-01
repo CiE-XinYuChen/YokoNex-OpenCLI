@@ -401,10 +401,18 @@ class YokoNexApp:
                     await self._cmd(addr, "set_channel",
                                     {"channel": channel, "enabled": False})
                 else:
-                    intensity = max(1, int(raw_int))   # clamp: 0 is invalid on device
-                    mode      = int(parts[4]) if len(parts) > 4 else 1
-                    freq      = int(parts[5]) if len(parts) > 5 else 0
-                    pulse_us  = int(parts[6]) if len(parts) > 6 else 0
+                    try:
+                        intensity = max(1, int(raw_int))
+                    except ValueError:
+                        self._logw(f"invalid intensity: {raw_int!r}  (use a number or 'off')")
+                        return
+                    try:
+                        mode     = int(parts[4]) if len(parts) > 4 else 1
+                        freq     = int(parts[5]) if len(parts) > 5 else 0
+                        pulse_us = int(parts[6]) if len(parts) > 6 else 0
+                    except ValueError as e:
+                        self._logw(f"invalid argument: {e}  —  usage: ems <n> <A|B|AB> <intensity|off> [mode] [freq] [pulse]")
+                        return
                     await self._cmd(addr, "set_channel", {
                         "channel":   channel,
                         "enabled":   True,

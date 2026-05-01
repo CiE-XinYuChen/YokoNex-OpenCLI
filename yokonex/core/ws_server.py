@@ -62,6 +62,8 @@ class WSServer:
                 await self._reply(ws, req_id, {"ok": True, "devices": devices})
 
             case "connect":
+                if "address" not in params:
+                    await self._reply(ws, req_id, {"ok": False, "error": "missing address"}); return
                 result = await self._manager.connect(
                     address=params["address"],
                     name=params.get("name", ""),
@@ -70,10 +72,14 @@ class WSServer:
                 await self._reply(ws, req_id, result)
 
             case "disconnect":
+                if "address" not in params:
+                    await self._reply(ws, req_id, {"ok": False, "error": "missing address"}); return
                 result = await self._manager.disconnect(params["address"])
                 await self._reply(ws, req_id, result)
 
             case "command":
+                if "address" not in params or "action" not in params:
+                    await self._reply(ws, req_id, {"ok": False, "error": "missing address or action"}); return
                 result = await self._manager.command(
                     address=params["address"],
                     action=params["action"],
